@@ -1,0 +1,223 @@
+From ca953b1b6b88f7ba1a5d66cfd1aa4ea832770a10 Mon Sep 17 00:00:00 2001
+From: Mauro Foti <m.foti@teckhouse.com>
+Date: Tue, 18 Feb 2014 17:20:13 +0100
+Subject: [PATCH] XmlList and XmlMap Namespace support
+
+Adding support for namespace param for XmlList and XmlMap Metadata
+
+@XmlList(entry="event", inline = true, namespace="http://mynamespace.net" )
+---
+ src/JMS/Serializer/Annotation/XmlCollection.php    |  5 ++
+ .../Metadata/Driver/AnnotationDriver.php           |  2 +
+ src/JMS/Serializer/Metadata/Driver/XmlDriver.php   |  8 +++
+ src/JMS/Serializer/Metadata/Driver/YamlDriver.php  |  8 +++
+ src/JMS/Serializer/XmlDeserializationVisitor.php   | 66 +++++++++++++++++-----
+ 5 files changed, 75 insertions(+), 14 deletions(-)
+
+diff --git a/src/JMS/Serializer/Annotation/XmlCollection.php b/src/JMS/Serializer/Annotation/XmlCollection.php
+index dd98dc5..243176a 100644
+--- a/src/JMS/Serializer/Annotation/XmlCollection.php
++++ b/src/JMS/Serializer/Annotation/XmlCollection.php
+@@ -29,4 +29,9 @@
+      * @var boolean
+      */
+     public $inline = false;
++
++    /**
++     * @var string
++     */
++    public $namespace;
+ }
+diff --git a/src/JMS/Serializer/Metadata/Driver/AnnotationDriver.php b/src/JMS/Serializer/Metadata/Driver/AnnotationDriver.php
+index d74544f..2a4e303 100644
+--- a/src/JMS/Serializer/Metadata/Driver/AnnotationDriver.php
++++ b/src/JMS/Serializer/Metadata/Driver/AnnotationDriver.php
+@@ -169,11 +169,13 @@ public function loadMetadataForClass(\ReflectionClass $class)
+                         $propertyMetadata->xmlCollection = true;
+                         $propertyMetadata->xmlCollectionInline = $annot->inline;
+                         $propertyMetadata->xmlEntryName = $annot->entry;
++                        $propertyMetadata->xmlNamespace = $annot->namespace;
+                     } elseif ($annot instanceof XmlMap) {
+                         $propertyMetadata->xmlCollection = true;
+                         $propertyMetadata->xmlCollectionInline = $annot->inline;
+                         $propertyMetadata->xmlEntryName = $annot->entry;
+                         $propertyMetadata->xmlKeyAttribute = $annot->keyAttribute;
++                        $propertyMetadata->xmlNamespace = $annot->namespace;
+                     } elseif ($annot instanceof XmlKeyValuePairs) {
+                         $propertyMetadata->xmlKeyValuePairs = true;
+                     } elseif ($annot instanceof XmlAttribute) {
+diff --git a/src/JMS/Serializer/Metadata/Driver/XmlDriver.php b/src/JMS/Serializer/Metadata/Driver/XmlDriver.php
+index e13cd08..58dd0c7 100644
+--- a/src/JMS/Serializer/Metadata/Driver/XmlDriver.php
++++ b/src/JMS/Serializer/Metadata/Driver/XmlDriver.php
+@@ -168,6 +168,10 @@ protected function loadMetadataFromFile(\ReflectionClass $class, $path)
+                         if (isset($colConfig->attributes()->{'entry-name'})) {
+                             $pMetadata->xmlEntryName = (string) $colConfig->attributes()->{'entry-name'};
+                         }
++
++                        if (isset($colConfig->attributes()->namespace)) {
++                            $pMetadata->xmlNamespace = (string) $colConfig->attributes()->namespace;
++                        }
+                     }
+ 
+                     if (isset($pElem->{'xml-map'})) {
+@@ -185,6 +189,10 @@ protected function loadMetadataFromFile(\ReflectionClass $class, $path)
+                         if (isset($colConfig->attributes()->{'key-attribute-name'})) {
+                             $pMetadata->xmlKeyAttribute = (string) $colConfig->attributes()->{'key-attribute-name'};
+                         }
++
++                        if (isset($colConfig->attributes()->namespace)) {
++                            $pMetadata->xmlNamespace = (string) $colConfig->attributes()->namespace;
++                        }
+                     }
+ 
+                     if (isset($pElem->{'xml-element'})) {
+diff --git a/src/JMS/Serializer/Metadata/Driver/YamlDriver.php b/src/JMS/Serializer/Metadata/Driver/YamlDriver.php
+index efae975..3570afb 100644
+--- a/src/JMS/Serializer/Metadata/Driver/YamlDriver.php
++++ b/src/JMS/Serializer/Metadata/Driver/YamlDriver.php
+@@ -119,6 +119,10 @@ protected function loadMetadataFromFile(\ReflectionClass $class, $file)
+                         if (isset($colConfig['entry_name'])) {
+                             $pMetadata->xmlEntryName = (string) $colConfig['entry_name'];
+                         }
++
++                        if (isset($colConfig['namespace'])) {
++                            $pMetadata->xmlNamespace = (string) $colConfig['namespace'];
++                        }
+                     }
+ 
+                     if (isset($pConfig['xml_map'])) {
+@@ -136,6 +140,10 @@ protected function loadMetadataFromFile(\ReflectionClass $class, $file)
+                         if (isset($colConfig['key_attribute_name'])) {
+                             $pMetadata->xmlKeyAttribute = $colConfig['key_attribute_name'];
+                         }
++
++                        if (isset($colConfig['namespace'])) {
++                            $pMetadata->xmlNamespace = (string) $colConfig['namespace'];
++                        }
+                     }
+ 
+                     if (isset($pConfig['xml_element'])) {
+diff --git a/src/JMS/Serializer/XmlDeserializationVisitor.php b/src/JMS/Serializer/XmlDeserializationVisitor.php
+index c63819f..552fae1 100644
+--- a/src/JMS/Serializer/XmlDeserializationVisitor.php
++++ b/src/JMS/Serializer/XmlDeserializationVisitor.php
+@@ -74,6 +74,7 @@ public function prepare($data)
+         }
+ 
+         $doc = simplexml_load_string($data);
++
+         libxml_use_internal_errors($previous);
+         libxml_disable_entity_loader($previousEntityLoaderState);
+ 
+@@ -145,7 +146,7 @@ public function visitArray($data, array $type, Context $context)
+     {
+         $entryName = null !== $this->currentMetadata && $this->currentMetadata->xmlEntryName ? $this->currentMetadata->xmlEntryName : 'entry';
+ 
+-        if ( ! isset($data->$entryName)) {
++        if ( ! isset($data->$entryName) && ! isset($data[$entryName]) ) {
+             if (null === $this->result) {
+                 return $this->result = array();
+             }
+@@ -163,8 +164,16 @@ public function visitArray($data, array $type, Context $context)
+                     $this->result = &$result;
+                 }
+ 
+-                foreach ($data->$entryName as $v) {
+-                    $result[] = $this->navigator->accept($v, $type['params'][0], $context);
++                if (is_object($data)){
++                    foreach ($data->$entryName as $v) {
++                        $result[] = $this->navigator->accept($v, $type['params'][0], $context);
++                    }
++                }
++
++                if(isset($data[$entryName])){
++                    foreach ($data[$entryName] as $v) {
++                        $result[] = $this->navigator->accept($v, $type['params'][0], $context);
++                    }
+                 }
+ 
+                 return $result;
+@@ -180,13 +189,26 @@ public function visitArray($data, array $type, Context $context)
+                     $this->result = &$result;
+                 }
+ 
+-                foreach ($data->$entryName as $v) {
+-                    if (!isset($v[$this->currentMetadata->xmlKeyAttribute])) {
+-                        throw new RuntimeException(sprintf('The key attribute "%s" must be set for each entry of the map.', $this->currentMetadata->xmlKeyAttribute));
++                if (is_object($data)){
++                    foreach ($data->$entryName as $v) {
++                        if (!isset($v[$this->currentMetadata->xmlKeyAttribute])) {
++                            throw new RuntimeException(sprintf('The key attribute "%s" must be set for each entry of the map.', $this->currentMetadata->xmlKeyAttribute));
++                        }
++
++                        $k = $this->navigator->accept($v[$this->currentMetadata->xmlKeyAttribute], $keyType, $context);
++                        $result[$k] = $this->navigator->accept($v, $entryType, $context);
+                     }
++                }
++
++                if(isset($data[$entryName])){
++                    foreach ($data[$entryName] as $v) {
++                        if (!isset($v[$this->currentMetadata->xmlKeyAttribute])) {
++                            throw new RuntimeException(sprintf('The key attribute "%s" must be set for each entry of the map.', $this->currentMetadata->xmlKeyAttribute));
++                        }
+ 
+-                    $k = $this->navigator->accept($v[$this->currentMetadata->xmlKeyAttribute], $keyType, $context);
+-                    $result[$k] = $this->navigator->accept($v, $entryType, $context);
++                        $k = $this->navigator->accept($v[$this->currentMetadata->xmlKeyAttribute], $keyType, $context);
++                        $result[$k] = $this->navigator->accept($v, $entryType, $context);
++                    }
+                 }
+ 
+                 return $result;
+@@ -224,9 +246,9 @@ public function visitProperty(PropertyMetadata $metadata, $data, Context $contex
+                 $nodes = $data->xpath('./@'.$attributeName);
+                 if (!empty($nodes)) {
+                     $v = (string) reset($nodes);
+-                    $metadata->reflection->setValue($this->currentObject, $v);    
++                    $metadata->reflection->setValue($this->currentObject, $v);
+                 }
+-                
++
+             } elseif (isset($data[$name])) {
+                 $v = $this->navigator->accept($data[$name], $metadata->type, $context);
+                 $metadata->reflection->setValue($this->currentObject, $v);
+@@ -243,17 +265,33 @@ public function visitProperty(PropertyMetadata $metadata, $data, Context $contex
+         }
+ 
+         if ($metadata->xmlCollection) {
+-            $enclosingElem = $data;
+-            if (!$metadata->xmlCollectionInline && isset($data->$name)) {
+-                $enclosingElem = $data->$name;
++
++            if ('' !== $namespace = (string) $metadata->xmlNamespace) {
++                $registeredNamespaces = $data->getDocNamespaces();
++                if (false === $prefix = array_search($namespace, $registeredNamespaces)) {
++                    $prefix = uniqid('ns-');
++                    $data->registerXPathNamespace($prefix, $namespace);
++                }
++                $elementName = ($prefix === '')?$name:$prefix.':'.$name;
++                $nodes = $data->xpath('./'.$elementName );
++                if (empty($nodes)) {
++                    return;
++                }
++                $node = array($name => $nodes);
++            } else {
++                $node = $data;
++                if (!$metadata->xmlCollectionInline && isset($node->$name)) {
++                    $node = $node->$name;
++                }
+             }
+ 
+             $this->setCurrentMetadata($metadata);
+-            $v = $this->navigator->accept($enclosingElem, $metadata->type, $context);
++            $v = $this->navigator->accept($node, $metadata->type, $context);
+             $this->revertCurrentMetadata();
+             $metadata->reflection->setValue($this->currentObject, $v);
+ 
+             return;
++
+         }
+ 
+         if ('' !== $namespace = (string) $metadata->xmlNamespace) {
+
