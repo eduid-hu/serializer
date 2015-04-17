@@ -1,0 +1,58 @@
+From bda094e3e2cd0616ba36301bf4a0e0c8d5953da5 Mon Sep 17 00:00:00 2001
+From: Mauro Foti <m.foti@teckhouse.com>
+Date: Tue, 18 Feb 2014 17:20:13 +0100
+Subject: [PATCH] XmlList and XmlMap Namespace support
+
+Adding support for namespace param for XmlList and XmlMap Metadata
+
+@XmlList(entry="event", inline = true, namespace="http://mynamespace.net" )
+---
+ src/JMS/Serializer/XmlSerializationVisitor.php | 12 +++++++++++-
+ tests/JMS/Serializer/Tests/Fixtures/Tag.php    | 14 ++++++++++++++
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+ create mode 100644 tests/JMS/Serializer/Tests/Fixtures/Tag.php
+
+diff --git a/src/JMS/Serializer/XmlSerializationVisitor.php b/src/JMS/Serializer/XmlSerializationVisitor.php
+index 17468d8..fcc962f 100644
+--- a/src/JMS/Serializer/XmlSerializationVisitor.php
++++ b/src/JMS/Serializer/XmlSerializationVisitor.php
+@@ -163,7 +163,17 @@ public function visitArray($data, array $type, Context $context)
+         foreach ($data as $k => $v) {
+             $tagName = (null !== $this->currentMetadata && $this->currentMetadata->xmlKeyValuePairs && $this->isElementNameValid($k)) ? $k : $entryName;
+ 
+-            $entryNode = $this->document->createElement($tagName);
++            if ('' !== $namespace = (string) $this->currentMetadata->xmlNamespace) {
++                if (!$prefix = $this->currentNode->lookupPrefix($namespace)) {
++                    $prefix = 'ns-'.  substr(sha1($namespace), 0, 8);
++                }
++
++                $entryNode = $this->document->createElementNS($this->currentMetadata->xmlNamespace, $tagName);
++                $entryNode->prefix = $prefix;
++            } else {
++                $entryNode = $this->document->createElement($tagName);
++            }
++
+             $this->currentNode->appendChild($entryNode);
+             $this->setCurrentNode($entryNode);
+ 
+diff --git a/tests/JMS/Serializer/Tests/Fixtures/Tag.php b/tests/JMS/Serializer/Tests/Fixtures/Tag.php
+new file mode 100644
+index 0000000..f812c23
+--- /dev/null
++++ b/tests/JMS/Serializer/Tests/Fixtures/Tag.php
+@@ -0,0 +1,14 @@
++<?php
++/**
++ * Created by PhpStorm.
++ * User: skler
++ * Date: 18/02/14
++ * Time: 18:29
++ */
++
++namespace JMS\Serializer\Tests\Fixtures;
++
++
++class Tag {
++
++} 
+\ No newline at end of file
