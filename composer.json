@@ -1,6 +1,7 @@
 {
     "name": "jms/serializer",
     "type": "library",
+    "version": "1.0.0.",
     "description": "Library for (de-)serializing data of any complexity; supports XML, JSON, and YAML.",
     "keywords": ["serialization", "deserialization", "json", "jaxb", "xml"],
     "homepage": "http://jmsyst.com/libs/serializer",
@@ -41,7 +42,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "0.15-dev"
+            "dev-master": "1.0.0"
         }
     }
 }
